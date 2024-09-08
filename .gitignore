@@ -1,0 +1,37 @@
+# Compiled object files
+*.o
+*.obj
+
+# Compiled dynamic libraries
+*.so
+*.dll
+*.dylib
+
+# Executables
+*.exe
+*.out
+
+# Build directories
+build/
+bin/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sln
+*.xcodeproj
+*.xcworkspace
+
+# Dependency directories
+vendor/
+lib/
+
+# Generated files
+Makefile
+CMakeLists.txt.user
+
+include/
+framework/
+.cache/
+
+.DS_Store
