@@ -142,18 +142,34 @@ void drawUnitCube(const glm::mat4 &transformMatrix) {
   // 2) Transform your cube by the given transformation matrix.
 }
 
+// Global variables to control the angles between the arm parts
+float upperArmAngle = 0.0f;
+float forearmAngle = 0.0f;
+float handAngle = 0.0f;
+
 void drawArm() {
-  // Produce a three-unit arm (upperarm, forearm, hand) making use of your
-  // function drawUnitCube to define each of them 1) Define 3 global variables
-  // that control the angles between the arm parts and add
-  //   cases to the keyboard function to control these values
+  // Upper arm
+  glm::mat4 upperArmTransform = glm::mat4(1.0f);
+  upperArmTransform = glm::rotate(
+      upperArmTransform, glm::radians(upperArmAngle), glm::vec3(0, 0, 1));
+  upperArmTransform = glm::scale(upperArmTransform, glm::vec3(1, 3, 1));
+  drawUnitCube(upperArmTransform);
 
-  // 2) Use these variables to define your arm.
-  //    Use glm::scale(Matrix, Vector) to achieve different arm lengths.
-  //    Use glm::rotate(Matrix, Angle, Vector) to correctly place the elements
+  // Forearm
+  glm::mat4 forearmTransform = glm::mat4(1.0f);
+  forearmTransform = glm::translate(forearmTransform, glm::vec3(0, 3, 0));
+  forearmTransform = glm::rotate(forearmTransform, glm::radians(forearmAngle),
+                                 glm::vec3(0, 0, 1));
+  forearmTransform = glm::scale(forearmTransform, glm::vec3(1, 2, 1));
+  drawUnitCube(forearmTransform);
 
-  // 3 Optional) make an animated snake out of these boxes
-  //(an arm with 10 joints that moves using the animate function)
+  // Hand
+  glm::mat4 handTransform = glm::mat4(1.0f);
+  handTransform = glm::translate(handTransform, glm::vec3(0, 5, 0));
+  handTransform =
+      glm::rotate(handTransform, glm::radians(handAngle), glm::vec3(0, 0, 1));
+  handTransform = glm::scale(handTransform, glm::vec3(1, 1, 1));
+  drawUnitCube(handTransform);
 }
 
 void drawLight() {
@@ -211,7 +227,17 @@ void display() {
 /**
  * Animation
  */
-void animate() {}
+void animate() {
+  static float angle = 0.0f;
+  angle += 0.01f; // Increment the angle for animation
+
+  // Update the light position based on the angle
+  float radius = 5.0f; // Radius of the circular path
+  lightPos = glm::vec3(radius * cos(angle), lightPos.y, radius * sin(angle));
+
+  // Redraw the scene with the updated light position
+  display();
+}
 
 // Take keyboard input into account.
 void keyboard(int key, int /* scancode */, int action, int /* mods */) {
