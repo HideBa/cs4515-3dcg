@@ -75,7 +75,9 @@ static glm::vec3 userInteractionSphere(const glm::vec3 &selectedPos,
   // source to cover the location as seen from camPos. Further, the light should
   // be at a distance of 1.5 from the origin of the scene - in other words,
   // located on a sphere of radius 1.5 around the origin.
-  return glm::vec3(1, 1, 1);
+  float raidus = 1.5f;
+  glm::vec3 direction = glm::normalize(selectedPos - camPos);
+  return direction * raidus;
 }
 
 static glm::vec3 userInteractionShadow(const glm::vec3 &selectedPos,
@@ -87,7 +89,9 @@ static glm::vec3 userInteractionShadow(const glm::vec3 &selectedPos,
   // there are several ways to do this, choose one you deem appropriate given
   // the current light position no panic, I will not judge what solution you
   // chose, as long as the above condition is met.
-  return glm::vec3(1, 0, 1);
+  float distance = glm::dot(lightPos - selectedPos, selectedNormal);
+  glm::vec3 newLightPos = lightPos - distance * selectedNormal;
+  return newLightPos;
 }
 
 static glm::vec3 userInteractionSpecular(const glm::vec3 &selectedPos,
@@ -100,7 +104,9 @@ static glm::vec3 userInteractionSpecular(const glm::vec3 &selectedPos,
   // If the camera is on the wrong side of the surface (normal pointing the
   // other way), then just return the original light position. There is only ONE
   // way of doing this!
-  return glm::vec3(0, 1, 1);
+  glm::vec3 viewDir = glm::normalize(cameraPos - selectedPos);
+  glm::vec3 reflectionDir = glm::reflect(-viewDir, selectedNormal);
+  return selectedPos + reflectionDir;
 }
 
 static size_t getClosestVertexIndex(const Mesh &mesh, const glm::vec3 &pos);
@@ -382,19 +388,30 @@ int main(int argc, char **argv) {
       return;
     }
     case GLFW_KEY_R: {
+      std::cout << "Resetting lights" << std::endl;
       if (shiftPressed) {
         // Decrease diffuse Kd coefficient in the red channel by 0.1
+        lights[selectedLightIndex].color.r -= 0.1f;
       } else {
         // Increase diffuse Kd coefficient in the red channel by 0.1
+        lights[selectedLightIndex].color.r += 0.1f;
       }
       return;
     }
     case GLFW_KEY_G: {
-      // Same for green.
+      if (shiftPressed) {
+        lights[selectedLightIndex].color.g -= 0.1f;
+      } else {
+        lights[selectedLightIndex].color.g += 0.1f;
+      }
       return;
     }
     case GLFW_KEY_B: {
-      // Same for blue.
+      if (shiftPressed) {
+        lights[selectedLightIndex].color.b -= 0.1f;
+      } else {
+        lights[selectedLightIndex].color.b += 0.1f;
+      }
       return;
     }
     default:
@@ -654,9 +671,19 @@ int main(int argc, char **argv) {
             // light, shadingData and cameraPos and texToon.
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, texToon);
-            glUniform1i(
-                xToonShader.getUniformLocation("xxx"),
-                0); // Change xxx to the uniform name that you want to use.
+            glUniform3fv(xToonShader.getUniformLocation("lightPos"), 1,
+                         glm::value_ptr(lights[selectedLightIndex].position));
+            glUniform3fv(xToonShader.getUniformLocation("viewPos"), 1,
+                         glm::value_ptr(cameraPos));
+            glUniform3fv(xToonShader.getUniformLocation("lightColor"), 1,
+                         glm::value_ptr(lights[selectedLightIndex].color));
+            glUniform3fv(xToonShader.getUniformLocation("kd"), 1,
+                         glm::value_ptr(shadingData.kd));
+            glUniform3fv(xToonShader.getUniformLocation("ks"), 1,
+                         glm::value_ptr(shadingData.ks));
+            glUniform1f(xToonShader.getUniformLocation("shininess"),
+                        shadingData.shininess);
+
             render(xToonShader);
           } else {
             if (toonLightingDiffuse) {
@@ -665,6 +692,15 @@ int main(int argc, char **argv) {
               // === SET YOUR DIFFUSE TOON UNIFORMS HERE ===
               // Values that you may want to pass to the shader are stored in
               // light, shadingData.
+              glUniform3fv(toonDiffuseShader.getUniformLocation("lightPos"), 1,
+                           glm::value_ptr(lights[selectedLightIndex].position));
+              glUniform3fv(toonDiffuseShader.getUniformLocation("lightColor"),
+                           1, glm::value_ptr(lights[selectedLightIndex].color));
+              glUniform3fv(toonDiffuseShader.getUniformLocation("kd"), 1,
+                           glm::value_ptr(shadingData.kd));
+              glUniform1i(
+                  toonDiffuseShader.getUniformLocation("toonDiscretize"),
+                  shadingData.toonDiscretize);
               render(toonDiffuseShader);
             }
             if (toonLightingSpecular) {
@@ -673,13 +709,25 @@ int main(int argc, char **argv) {
               // === SET YOUR SPECULAR TOON UNIFORMS HERE ===
               // Values that you may want to pass to the shader are stored in
               // light, shadingData and cameraPos.
+              glUniform3fv(toonSpecularShader.getUniformLocation("lightPos"), 1,
+                           glm::value_ptr(lights[selectedLightIndex].position));
+              glUniform3fv(toonSpecularShader.getUniformLocation("viewPos"), 1,
+                           glm::value_ptr(cameraPos));
+              glUniform3fv(toonSpecularShader.getUniformLocation("lightColor"),
+                           1, glm::value_ptr(lights[selectedLightIndex].color));
+              glUniform3fv(toonSpecularShader.getUniformLocation("ks"), 1,
+                           glm::value_ptr(shadingData.ks));
+              glUniform1f(toonSpecularShader.getUniformLocation("shininess"),
+                          shadingData.shininess);
+              // glUniform1f(toonSpecularShader.getUniformLocation(
+              //                 "toonSpecularThreshold"),
+              //             shadingData.toonSpecularThreshold);
               render(toonSpecularShader);
             }
           }
         }
         if (!renderedSomething) {
           if (diffuseLighting) {
-            std::cout << "DiffuseLighting" << std::endl;
             lambertShader.bind();
             // === SET YOUR LAMBERT UNIFORMS HERE ===
             // Values that you may want to pass to the shader include
@@ -711,7 +759,7 @@ int main(int argc, char **argv) {
             glUniform3fv(shader.getUniformLocation("kd"), 1,
                          glm::value_ptr(shadingData.kd)); // Object property rgb
             glUniform1f(shader.getUniformLocation("shininess"),
-                        shadingData.shininess); // Object property rgb
+                        shadingData.shininess);
 
             render(shader);
           }
@@ -742,7 +790,9 @@ int main(int argc, char **argv) {
                    glm::value_ptr(screenPos));
       glUniform3fv(lightShader.getUniformLocation("color"), 1,
                    glm::value_ptr(color));
+      glBindVertexArray(vao);
       glDrawArrays(GL_POINTS, 0, 1);
+      glBindVertexArray(0);
     }
     for (const Light &light : lights) {
       const glm::vec4 screenPos = mvp * glm::vec4(light.position, 1.0f);
@@ -753,7 +803,9 @@ int main(int argc, char **argv) {
                    glm::value_ptr(screenPos));
       glUniform3fv(lightShader.getUniformLocation("color"), 1,
                    glm::value_ptr(light.color));
+      glBindVertexArray(vao);
       glDrawArrays(GL_POINTS, 0, 1);
+      glBindVertexArray(0);
     }
 
     // Present result to the screen.
@@ -775,13 +827,16 @@ int main(int argc, char **argv) {
 static void userInteraction(const glm::vec3 &cameraPos,
                             const glm::vec3 &selectedPos,
                             const glm::vec3 &selectedNormal) {
+  std::cout << "User Interaction" << std::endl;
   switch (interfaceLightPlacement) {
   case LightPlacementValue::Sphere: {
+    std::cout << "Sphere add----" << std::endl;
     lights[selectedLightIndex].position =
         userInteractionSphere(selectedPos, cameraPos);
     break;
   }
   case LightPlacementValue::Shadow: {
+    std::cout << "shadow add----" << std::endl;
     lights[selectedLightIndex].position = userInteractionShadow(
         selectedPos, selectedNormal, lights[selectedLightIndex].position);
     break;
