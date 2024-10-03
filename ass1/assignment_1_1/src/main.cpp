@@ -48,6 +48,16 @@ struct {
   float toonSpecularThreshold = 0.49f;
 } shadingData;
 
+struct {
+  int diffuse_model = 0;  // "debug", "lambert", "toon", "x-toon"
+  int specular_model = 0; // "none", "phong", "blinn-phong", "toon"
+  bool shadows = true;
+  bool pcf = true;
+} renderSettings;
+
+const char *diffuseModels[] = {"debug", "lambert", "toon", "x-toon"};
+const char *specularModels[] = {"none", "phong", "blinn-phong", "toon"};
+
 struct Texture {
   int width;
   int height;
@@ -90,43 +100,55 @@ void imgui() {
                      &shadingData.toonSpecularThreshold, 0.0f, 1.0f);
 
   ImGui::Separator();
+  ImGui::Text("Render Settings");
+
+  ImGui::Combo("Diffuse Model", &renderSettings.diffuse_model, diffuseModels,
+               IM_ARRAYSIZE(diffuseModels));
+  ImGui::Text("Current Diffuse Model: %s",
+              diffuseModels[renderSettings.diffuse_model]);
+  ImGui::Combo("Specular Model", &renderSettings.specular_model, specularModels,
+               IM_ARRAYSIZE(specularModels));
+  ImGui::Checkbox("Shadows", &renderSettings.shadows);
+  ImGui::Checkbox("PCF", &renderSettings.pcf);
+
+  ImGui::Separator();
   ImGui::Text("Lights");
 
   //   // Display lights in scene
-  //   std::vector<std::string> itemStrings = {};
-  //   for (size_t i = 0; i < lights.size(); i++) {
-  //     auto string = "Light " + std::to_string(i);
-  //     itemStrings.push_back(string);
-  //   }
+  std::vector<std::string> itemStrings = {};
+  for (size_t i = 0; i < lights.size(); i++) {
+    auto string = "Light " + std::to_string(i);
+    itemStrings.push_back(string);
+  }
 
-  //   std::vector<const char *> itemCStrings = {};
-  //   for (const auto &string : itemStrings) {
-  //     itemCStrings.push_back(string.c_str());
-  //   }
+  std::vector<const char *> itemCStrings = {};
+  for (const auto &string : itemStrings) {
+    itemCStrings.push_back(string.c_str());
+  }
 
-  //   int tempSelectedItem = static_cast<int>(selectedLightIndex);
-  //   if (ImGui::ListBox("Lights", &tempSelectedItem, itemCStrings.data(),
-  //                      (int)itemCStrings.size(), 4)) {
-  //     selectedLightIndex = static_cast<size_t>(tempSelectedItem);
-  //   }
+  int tempSelectedItem = static_cast<int>(selectedLightIndex);
+  if (ImGui::ListBox("Lights", &tempSelectedItem, itemCStrings.data(),
+                     (int)itemCStrings.size(), 4)) {
+    selectedLightIndex = static_cast<size_t>(tempSelectedItem);
+  }
 
-  //   if (selectedLightIndex < lights.size()) {
-  //     Light &selectedLight = lights[selectedLightIndex];
+  if (selectedLightIndex < lights.size()) {
+    Light &selectedLight = lights[selectedLightIndex];
 
-  //     ImGui::ColorEdit3("Light Color", &selectedLight.color[0]);
-  //     ImGui::DragFloat3("Light Position", &selectedLight.position[0], 0.1f);
-  //     ImGui::Checkbox("Is Spotlight", &selectedLight.is_spotlight);
-  //     if (selectedLight.is_spotlight) {
-  //       ImGui::DragFloat3("Spotlight Direction", &selectedLight.direction[0],
-  //                         0.1f);
-  //     }
-  //     ImGui::Checkbox("Has Texture", &selectedLight.has_texture);
-  //     if (selectedLight.has_texture) {
-  //       ImGui::InputInt("Texture Width", &selectedLight.texture.width);
-  //       ImGui::InputInt("Texture Height", &selectedLight.texture.height);
-  //       ImGui::InputInt("Texture Channels", &selectedLight.texture.channels);
-  //     }
-  //   }
+    ImGui::ColorEdit3("Light Color", &selectedLight.color[0]);
+    ImGui::DragFloat3("Light Position", &selectedLight.position[0], 0.1f);
+    ImGui::Checkbox("Is Spotlight", &selectedLight.is_spotlight);
+    if (selectedLight.is_spotlight) {
+      ImGui::DragFloat3("Spotlight Direction", &selectedLight.direction[0],
+                        0.1f);
+    }
+    ImGui::Checkbox("Has Texture", &selectedLight.has_texture);
+    if (selectedLight.has_texture) {
+      ImGui::InputInt("Texture Width", &selectedLight.texture.width);
+      ImGui::InputInt("Texture Height", &selectedLight.texture.height);
+      ImGui::InputInt("Texture Channels", &selectedLight.texture.channels);
+    }
+  }
 
   ImGui::End();
   ImGui::Render();
@@ -274,6 +296,12 @@ int main(int argc, char **argv) {
           .addStage(GL_VERTEX_SHADER, RESOURCE_ROOT "shaders/vertex.glsl")
           .addStage(GL_FRAGMENT_SHADER, RESOURCE_ROOT "shaders/debug_frag.glsl")
           .build();
+  const Shader diffuseShader =
+      ShaderBuilder()
+          .addStage(GL_VERTEX_SHADER, RESOURCE_ROOT "shaders/vertex.glsl")
+          .addStage(GL_FRAGMENT_SHADER,
+                    RESOURCE_ROOT "shaders/diffuse_frag.glsl")
+          .build();
 
   // Create Vertex Buffer Object and Index Buffer Objects.
   GLuint vbo;
@@ -368,7 +396,33 @@ int main(int argc, char **argv) {
 
       glBindVertexArray(0);
     };
-
+    if (renderSettings.diffuse_model == 0) {
+      debugShader.bind();
+      render(debugShader);
+    } else if (renderSettings.diffuse_model == 1 ||
+               renderSettings.diffuse_model == 2 ||
+               renderSettings.diffuse_model == 3) {
+      diffuseShader.bind();
+      glUniform3fv(diffuseShader.getUniformLocation("lightPos"), 1,
+                   glm::value_ptr(lights[selectedLightIndex].position));
+      glUniform3fv(diffuseShader.getUniformLocation("viewPos"), 1,
+                   glm::value_ptr(cameraPos));
+      glUniform3fv(diffuseShader.getUniformLocation("lightColor"), 1,
+                   glm::value_ptr(lights[selectedLightIndex].color));
+      glUniform3fv(diffuseShader.getUniformLocation("ks"), 1,
+                   glm::value_ptr(shadingData.ks));
+      glUniform3fv(diffuseShader.getUniformLocation("kd"), 1,
+                   glm::value_ptr(shadingData.kd));
+      glUniform1f(diffuseShader.getUniformLocation("shininess"),
+                  shadingData.shininess);
+      glUniform1f(diffuseShader.getUniformLocation("toonSpecularThreshold"),
+                  shadingData.toonSpecularThreshold);
+      glUniform1i(diffuseShader.getUniformLocation("toonDiscretize"),
+                  shadingData.toonDiscretize);
+      glUniform1i(diffuseShader.getUniformLocation("mode"),
+                  renderSettings.diffuse_model);
+      render(diffuseShader);
+    }
     debugShader.bind();
     render(debugShader);
 
