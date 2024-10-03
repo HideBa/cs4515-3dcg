@@ -49,8 +49,8 @@ struct {
 } shadingData;
 
 struct {
-  int diffuseModel = 0;  // "debug", "lambert", "toon", "x-toon"
-  int specularModel = 0; // "none", "phong", "blinn-phong", "toon"
+  int diffuseMode = 0;  // "debug", "lambert", "toon", "x-toon"
+  int specularMode = 0; // "none", "phong", "blinn-phong", "toon"
   bool shadows = true;
   bool pcf = true;
 } renderSettings;
@@ -102,11 +102,11 @@ void imgui() {
   ImGui::Separator();
   ImGui::Text("Render Settings");
 
-  ImGui::Combo("Diffuse Model", &renderSettings.diffuseModel, diffuseModels,
+  ImGui::Combo("Diffuse Model", &renderSettings.diffuseMode, diffuseModels,
                IM_ARRAYSIZE(diffuseModels));
   ImGui::Text("Current Diffuse Model: %s",
-              diffuseModels[renderSettings.diffuseModel]);
-  ImGui::Combo("Specular Model", &renderSettings.specularModel, specularModels,
+              diffuseModels[renderSettings.diffuseMode]);
+  ImGui::Combo("Specular Model", &renderSettings.specularMode, specularModels,
                IM_ARRAYSIZE(specularModels));
   ImGui::Checkbox("Shadows", &renderSettings.shadows);
   ImGui::Checkbox("PCF", &renderSettings.pcf);
@@ -264,16 +264,16 @@ int main(int argc, char **argv) {
 
   auto diffuse_model =
       config["render_settings"]["diffuse_model"].value<std::string>();
-  renderSettings.diffuseModel = diffuse_model == "debug"     ? 0
-                                : diffuse_model == "lambert" ? 1
-                                : diffuse_model == "toon"    ? 2
-                                                             : 3;
+  renderSettings.diffuseMode = diffuse_model == "debug"     ? 0
+                               : diffuse_model == "lambert" ? 1
+                               : diffuse_model == "toon"    ? 2
+                                                            : 3;
   auto specular_model =
       config["render_settings"]["specular_model"].value<std::string>();
-  renderSettings.specularModel = specular_model == "none"          ? 0
-                                 : specular_model == "phong"       ? 1
-                                 : specular_model == "blinn-phong" ? 2
-                                                                   : 3;
+  renderSettings.specularMode = specular_model == "none"          ? 0
+                                : specular_model == "phong"       ? 1
+                                : specular_model == "blinn-phong" ? 2
+                                                                  : 3;
   bool do_pcf = config["render_settings"]["pcf"].value<bool>().value();
   bool do_shadows = config["render_settings"]["shadows"].value<bool>().value();
 
@@ -304,18 +304,13 @@ int main(int argc, char **argv) {
           .addStage(GL_VERTEX_SHADER, RESOURCE_ROOT "shaders/vertex.glsl")
           .addStage(GL_FRAGMENT_SHADER, RESOURCE_ROOT "shaders/debug_frag.glsl")
           .build();
-  const Shader diffuseShader =
+  const Shader shader =
       ShaderBuilder()
           .addStage(GL_VERTEX_SHADER, RESOURCE_ROOT "shaders/vertex.glsl")
-          .addStage(GL_FRAGMENT_SHADER,
-                    RESOURCE_ROOT "shaders/diffuse_frag.glsl")
+          .addStage(GL_FRAGMENT_SHADER, RESOURCE_ROOT
+                    "shaders/frag.glsl") // Use the combined shader filename
           .build();
-  const Shader specularShader =
-      ShaderBuilder()
-          .addStage(GL_VERTEX_SHADER, RESOURCE_ROOT "shaders/vertex.glsl")
-          .addStage(GL_FRAGMENT_SHADER,
-                    RESOURCE_ROOT "shaders/specular_frag.glsl")
-          .build();
+
   // Create Vertex Buffer Object and Index Buffer Objects.
   GLuint vbo;
 
@@ -409,59 +404,36 @@ int main(int argc, char **argv) {
 
       glBindVertexArray(0);
     };
-    if (renderSettings.diffuseModel == 0) {
+    if (renderSettings.diffuseMode == 0) {
       debugShader.bind();
       render(debugShader);
-    } else if (renderSettings.diffuseModel == 1 ||
-               renderSettings.diffuseModel == 2 ||
-               renderSettings.diffuseModel == 3) {
-      diffuseShader.bind();
-      glUniform3fv(diffuseShader.getUniformLocation("lightPos"), 1,
-                   glm::value_ptr(lights[selectedLightIndex].position));
-      glUniform3fv(diffuseShader.getUniformLocation("viewPos"), 1,
-                   glm::value_ptr(cameraPos));
-      glUniform3fv(diffuseShader.getUniformLocation("lightColor"), 1,
-                   glm::value_ptr(lights[selectedLightIndex].color));
-      glUniform3fv(diffuseShader.getUniformLocation("ks"), 1,
-                   glm::value_ptr(shadingData.ks));
-      glUniform3fv(diffuseShader.getUniformLocation("kd"), 1,
-                   glm::value_ptr(shadingData.kd));
-      // glUniform1f(diffuseShader.getUniformLocation("shininess"),
-      //             shadingData.shininess);
-      glUniform1f(diffuseShader.getUniformLocation("toonSpecularThreshold"),
-                  shadingData.toonSpecularThreshold);
-      glUniform1i(diffuseShader.getUniformLocation("toonDiscretize"),
-                  shadingData.toonDiscretize);
-      glUniform1i(diffuseShader.getUniformLocation("mode"),
-                  renderSettings.diffuseModel);
-      render(diffuseShader);
-    }
-    if (renderSettings.specularModel != 0) {
-      specularShader.bind();
-      std::cout << "Specular model: " << renderSettings.specularModel
+    } else if (renderSettings.specularMode != 0 ||
+               renderSettings.diffuseMode != 0) {
+      shader.bind();
+      std::cout << "Specular model: " << renderSettings.specularMode
                 << std::endl;
-      glUniform3fv(specularShader.getUniformLocation("lightPos"), 1,
+      glUniform3fv(shader.getUniformLocation("lightPos"), 1,
                    glm::value_ptr(lights[selectedLightIndex].position));
-      glUniform3fv(specularShader.getUniformLocation("viewPos"), 1,
+      glUniform3fv(shader.getUniformLocation("viewPos"), 1,
                    glm::value_ptr(cameraPos));
-      glUniform3fv(specularShader.getUniformLocation("lightColor"), 1,
+      glUniform3fv(shader.getUniformLocation("lightColor"), 1,
                    glm::value_ptr(lights[selectedLightIndex].color));
-      glUniform3fv(specularShader.getUniformLocation("ks"), 1,
+      glUniform3fv(shader.getUniformLocation("ks"), 1,
                    glm::value_ptr(shadingData.ks));
-      glUniform3fv(specularShader.getUniformLocation("kd"), 1,
+      glUniform3fv(shader.getUniformLocation("kd"), 1,
                    glm::value_ptr(shadingData.kd));
-      glUniform1f(specularShader.getUniformLocation("shininess"),
+      glUniform1f(shader.getUniformLocation("shininess"),
                   shadingData.shininess);
-      // glUniform1f(specularShader.getUniformLocation("toonSpecularThreshold"),
-      //             shadingData.toonSpecularThreshold);
-      glUniform1i(specularShader.getUniformLocation("toonDiscretize"),
+      glUniform1f(shader.getUniformLocation("toonSpecularThreshold"),
+                  shadingData.toonSpecularThreshold);
+      glUniform1i(shader.getUniformLocation("toonDiscretize"),
                   shadingData.toonDiscretize);
-      glUniform1i(specularShader.getUniformLocation("mode"),
-                  renderSettings.specularModel);
-      render(specularShader);
+      glUniform1i(shader.getUniformLocation("specularMode"),
+                  renderSettings.specularMode);
+      glUniform1i(shader.getUniformLocation("diffuseMode"),
+                  renderSettings.diffuseMode);
+      render(shader);
     }
-    debugShader.bind();
-    render(debugShader);
 
     // Present result to the screen.
     window.swapBuffers();
