@@ -6,7 +6,6 @@ uniform vec3 lightPos;     // Light position in world space
 uniform vec3 lightColor;   // Light color
 uniform vec3 kd;           // Diffuse reflectivity
 uniform vec3 ks;           // Specular reflectivity
-uniform float shininess;   // Shininess factor for specular highlight
 uniform int toonDiscretize;     // Number of levels for toon shading
 uniform float toonSpecularThreshold; // Threshold for toon specular highlight
 uniform int mode;          // Shading mode: 0 - debug, 1 - lambert, 2 - toon, 3 - x-toon
