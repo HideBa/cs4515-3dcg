@@ -65,6 +65,9 @@ struct Texture {
   stbi_uc *texture_data;
 };
 
+enum class LightPlacementValue { Sphere = 0, Shadow = 1, Specular = 2 };
+LightPlacementValue interfaceLightPlacement{LightPlacementValue::Sphere};
+
 // Lights
 struct Light {
   glm::vec3 position;
@@ -77,6 +80,66 @@ struct Light {
 
 std::vector<Light> lights{};
 size_t selectedLightIndex = 0;
+
+static glm::vec3 userInteractionSphere(const glm::vec3 &selectedPos,
+                                       const glm::vec3 &camPos) {
+  // RETURN the new light position, defined as follows.
+  // selectedPos is a location on the mesh. Use this location to place the light
+  // source to cover the location as seen from camPos. Further, the light should
+  // be at a distance of 1.5 from the origin of the scene - in other words,
+  // located on a sphere of radius 1.5 around the origin.
+  float raidus = 1.5f;
+  glm::vec3 direction = glm::normalize(selectedPos - camPos);
+  return direction * raidus;
+}
+
+static glm::vec3 userInteractionShadow(const glm::vec3 &selectedPos,
+                                       const glm::vec3 &selectedNormal,
+                                       const glm::vec3 &lightPos) {
+  float distance = glm::dot(lightPos - selectedPos, selectedNormal);
+  glm::vec3 newLightPos = lightPos - distance * selectedNormal;
+  return newLightPos;
+}
+
+static glm::vec3 userInteractionSpecular(const glm::vec3 &selectedPos,
+                                         const glm::vec3 &selectedNormal,
+                                         const glm::vec3 &lightPos,
+                                         const glm::vec3 &cameraPos) {
+  // RETURN the new light position such that a specularity (highlight) will be
+  // located at selectedPos, when viewed from cameraPos and lit from lightPos.
+  // please ensure also that the light is at a distance of 1 from selectedPos!
+  // If the camera is on the wrong side of the surface (normal pointing the
+  // other way), then just return the original light position. There is only ONE
+  // way of doing this!
+  glm::vec3 viewDir = glm::normalize(cameraPos - selectedPos);
+  glm::vec3 reflectionDir = glm::reflect(-viewDir, selectedNormal);
+  return selectedPos + reflectionDir;
+}
+
+static size_t getClosestVertexIndex(const Mesh &mesh, const glm::vec3 &pos);
+static std::optional<glm::vec3> getWorldPositionOfPixel(const Trackball &,
+                                                        const glm::vec2 &pixel);
+static void userInteraction(const glm::vec3 &cameraPos,
+                            const glm::vec3 &selectedPos,
+                            const glm::vec3 &selectedNormal);
+static void printHelp();
+
+void resetLights() {
+  lights.clear();
+  lights.push_back(Light{glm::vec3(0, 0, 3), glm::vec3(1)});
+  selectedLightIndex = 0;
+}
+
+void selectNextLight() {
+  selectedLightIndex = (selectedLightIndex + 1) % lights.size();
+}
+
+void selectPreviousLight() {
+  if (selectedLightIndex == 0)
+    selectedLightIndex = lights.size() - 1;
+  else
+    --selectedLightIndex;
+}
 
 void imgui() {
 
@@ -113,6 +176,11 @@ void imgui() {
 
   ImGui::Separator();
   ImGui::Text("Lights");
+  if (ImGui::Button("Add Light")) {
+    std::cout << "Adding light" << std::endl;
+    lights.push_back(Light{glm::vec3(0, 0, 3), glm::vec3(1)});
+    selectedLightIndex = lights.size() - 1;
+  }
 
   //   // Display lights in scene
   std::vector<std::string> itemStrings = {};
@@ -149,6 +217,12 @@ void imgui() {
       ImGui::InputInt("Texture Channels", &selectedLight.texture.channels);
     }
   }
+
+  std::array interactionModeNames{"Shadow", "Sphere", "Specular"};
+  int current_mode = static_cast<int>(interfaceLightPlacement);
+  ImGui::Combo("User Interaction Mode", &current_mode,
+               interactionModeNames.data(), interactionModeNames.size());
+  interfaceLightPlacement = static_cast<LightPlacementValue>(current_mode);
 
   ImGui::End();
   ImGui::Render();
@@ -289,15 +363,82 @@ int main(int argc, char **argv) {
 
   const Mesh mesh = loadMesh(mesh_path)[0];
 
-  window.registerKeyCallback(
-      [&](int key, int /* scancode */, int action, int /* mods */) {
-        if (key == '\\' && action == GLFW_PRESS) {
-          show_imgui = !show_imgui;
-        }
+  window.registerKeyCallback([&](int key, int /* scancode */, int action,
+                                 int /* mods */) {
+    if (key == '\\' && action == GLFW_PRESS) {
+      show_imgui = !show_imgui;
+    }
 
-        if (action != GLFW_RELEASE)
-          return;
-      });
+    if (action != GLFW_RELEASE)
+      return;
+
+    const bool shiftPressed = window.isKeyPressed(GLFW_KEY_LEFT_SHIFT) ||
+                              window.isKeyPressed(GLFW_KEY_RIGHT_SHIFT);
+    std::cout << "Key " << key << " pressed" << std::endl;
+    std::cout << "Shift pressed: " << shiftPressed << std::endl;
+    switch (key) {
+    case GLFW_KEY_M: {
+      interfaceLightPlacement = static_cast<LightPlacementValue>(
+          (static_cast<int>(interfaceLightPlacement) + 1) % 3);
+      break;
+    }
+    case GLFW_KEY_L: {
+      std::cout << "Interaction: LightPlacementValue::Sphere" << std::endl;
+      if (shiftPressed) {
+        std::cout << "Interaction: LightPlacementValue::Sphere" << std::endl;
+        lights.push_back(Light{trackball.position(), glm::vec3(1)});
+      } else
+        lights[selectedLightIndex].position = trackball.position();
+      return;
+    }
+    case GLFW_KEY_MINUS: {
+      selectPreviousLight();
+      return;
+    }
+    case GLFW_KEY_EQUAL: {
+      if (shiftPressed) // '+' pressed (unless you use a weird keyboard layout).
+        selectNextLight();
+      return;
+    }
+    case GLFW_KEY_N: {
+      resetLights();
+      return;
+    }
+    case GLFW_KEY_SPACE: {
+      const auto optWorldPoint =
+          getWorldPositionOfPixel(trackball, window.getCursorPixel());
+      if (optWorldPoint) {
+        // std::cout << "World point: (" << optWorldPoint->x << ", " <<
+        // optWorldPoint->y << ", " << optWorldPoint->z << ")" << std::endl;
+        // lights[selectedLightIndex].position = worldPoint;
+        const size_t selectedVertexIdx =
+            getClosestVertexIndex(mesh, *optWorldPoint);
+        if (selectedVertexIdx != 0xFFFFFFFF) {
+          const Vertex &selectedVertex = mesh.vertices[selectedVertexIdx];
+          userInteraction(trackball.position(), selectedVertex.position,
+                          selectedVertex.normal);
+        }
+      }
+      return;
+    }
+    default:
+      return;
+    };
+    switch (interfaceLightPlacement) {
+    case LightPlacementValue::Sphere: {
+      std::cout << "Interaction: LightPlacementValue::Sphere" << std::endl;
+      break;
+    }
+    case LightPlacementValue::Shadow: {
+      std::cout << "Interaction: LightPlacementValue::Shadow" << std::endl;
+      break;
+    }
+    case LightPlacementValue::Specular: {
+      std::cout << "Interaction: LightPlacementValue::Specular" << std::endl;
+      break;
+    }
+    };
+  });
 
   const Shader debugShader =
       ShaderBuilder()
@@ -335,17 +476,17 @@ int main(int argc, char **argv) {
   // Bind vertex data to shader inputs using their index (location).
   // These bindings are stored in the Vertex Array Object.
   GLuint vao;
-  // Create VAO and bind it so subsequent creations of VBO and IBO are bound to
-  // this VAO
+  // Create VAO and bind it so subsequent creations of VBO and IBO are bound
+  // to this VAO
   glGenVertexArrays(1, &vao);
   glBindVertexArray(vao);
   glBindBuffer(GL_ARRAY_BUFFER, vbo);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
 
   // The position and normal vectors should be retrieved from the specified
-  // Vertex Buffer Object. The stride is the distance in bytes between vertices.
-  // We use the offset to point to the normals instead of the positions. Tell
-  // OpenGL that we will be using vertex attributes 0 and 1.
+  // Vertex Buffer Object. The stride is the distance in bytes between
+  // vertices. We use the offset to point to the normals instead of the
+  // positions. Tell OpenGL that we will be using vertex attributes 0 and 1.
   glEnableVertexAttribArray(0);
   glEnableVertexAttribArray(1);
 
@@ -386,10 +527,10 @@ int main(int argc, char **argv) {
       glBindVertexArray(vao);
 
       // We tell OpenGL what each vertex looks like and how they are mapped to
-      // the shader using the names NOTE: Usually this can be stored in the VAO,
-      // since the locations would be the same in all shaders by using the
-      // layout(location = ...) qualifier in the shaders, however this does not
-      // work on apple devices.
+      // the shader using the names NOTE: Usually this can be stored in the
+      // VAO, since the locations would be the same in all shaders by using
+      // the layout(location = ...) qualifier in the shaders, however this
+      // does not work on apple devices.
       glVertexAttribPointer(shader.getAttributeLocation("pos"), 3, GL_FLOAT,
                             GL_FALSE, sizeof(Vertex),
                             (void *)offsetof(Vertex, position));
@@ -445,4 +586,87 @@ int main(int argc, char **argv) {
   glDeleteVertexArrays(1, &vao);
 
   return 0;
+}
+static void userInteraction(const glm::vec3 &cameraPos,
+                            const glm::vec3 &selectedPos,
+                            const glm::vec3 &selectedNormal) {
+  std::cout << "User Interaction" << std::endl;
+  switch (interfaceLightPlacement) {
+  case LightPlacementValue::Sphere: {
+    std::cout << "Sphere add----" << std::endl;
+    lights[selectedLightIndex].position =
+        userInteractionSphere(selectedPos, cameraPos);
+    break;
+  }
+  case LightPlacementValue::Shadow: {
+    std::cout << "shadow add----" << std::endl;
+    lights[selectedLightIndex].position = userInteractionShadow(
+        selectedPos, selectedNormal, lights[selectedLightIndex].position);
+    break;
+  }
+  case LightPlacementValue::Specular: {
+    lights[selectedLightIndex].position =
+        userInteractionSpecular(selectedPos, selectedNormal,
+                                lights[selectedLightIndex].position, cameraPos);
+    break;
+  }
+  }
+}
+
+static size_t getClosestVertexIndex(const Mesh &mesh, const glm::vec3 &pos) {
+  const auto iter =
+      std::min_element(std::begin(mesh.vertices), std::end(mesh.vertices),
+                       [&](const Vertex &lhs, const Vertex &rhs) {
+                         return glm::length(lhs.position - pos) <
+                                glm::length(rhs.position - pos);
+                       });
+  return (size_t)std::distance(std::begin(mesh.vertices), iter);
+}
+
+static std::optional<glm::vec3>
+getWorldPositionOfPixel(const Trackball &trackball, const glm::vec2 &pixel) {
+  float depth;
+  glReadPixels(static_cast<int>(pixel.x), static_cast<int>(pixel.y), 1, 1,
+               GL_DEPTH_COMPONENT, GL_FLOAT, &depth);
+
+  if (depth == 1.0f) {
+    // This is a work around for a bug in GCC:
+    // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=80635
+    //
+    // This bug will emit a warning about a maybe uninitialized value when
+    // writing: return {};
+    constexpr std::optional<glm::vec3> tmp;
+    return tmp;
+  }
+
+  // Coordinates convert from pixel space to OpenGL screen space (range from -1
+  // to +1)
+  const glm::vec3 win{pixel, depth};
+
+  // View matrix
+  const glm::mat4 view = trackball.viewMatrix();
+  const glm::mat4 projection = trackball.projectionMatrix();
+
+  const glm::vec4 viewport{0, 0, WIDTH, HEIGHT};
+  return glm::unProject(win, view, projection, viewport);
+}
+
+static void printHelp() {
+  Trackball::printHelp();
+  std::cout << std::endl;
+  std::cout << "Program Usage:" << std::endl;
+  std::cout << "______________________" << std::endl;
+  std::cout << "m - Change Interaction Mode - to influence light source"
+            << std::endl;
+  std::cout << "l - place the light source at the current camera position"
+            << std::endl;
+  std::cout << "L - add an additional light source" << std::endl;
+  std::cout << "+ - choose next light source" << std::endl;
+  std::cout << "- - choose previous light source" << std::endl;
+  std::cout << "N - clear all light sources and reinitialize with one"
+            << std::endl;
+  // std::cout << "s - show selected vertices" << std::endl;
+  std::cout << "SPACE - call your light placement function with the current "
+               "mouse position"
+            << std::endl;
 }
