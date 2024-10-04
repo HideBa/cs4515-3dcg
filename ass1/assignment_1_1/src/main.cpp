@@ -167,8 +167,6 @@ void imgui() {
 
   ImGui::Combo("Diffuse Model", &renderSettings.diffuseMode, diffuseModels,
                IM_ARRAYSIZE(diffuseModels));
-  ImGui::Text("Current Diffuse Model: %s",
-              diffuseModels[renderSettings.diffuseMode]);
   ImGui::Combo("Specular Model", &renderSettings.specularMode, specularModels,
                IM_ARRAYSIZE(specularModels));
   ImGui::Checkbox("Shadows", &renderSettings.shadows);
@@ -182,7 +180,7 @@ void imgui() {
     selectedLightIndex = lights.size() - 1;
   }
 
-  //   // Display lights in scene
+  // Display lights in scene
   std::vector<std::string> itemStrings = {};
   for (size_t i = 0; i < lights.size(); i++) {
     auto string = "Light " + std::to_string(i);
@@ -218,7 +216,7 @@ void imgui() {
     }
   }
 
-  std::array interactionModeNames{"Shadow", "Sphere", "Specular"};
+  std::array interactionModeNames{"Sphere", "Shadow", "Specular"};
   int current_mode = static_cast<int>(interfaceLightPlacement);
   ImGui::Combo("User Interaction Mode", &current_mode,
                interactionModeNames.data(), interactionModeNames.size());
@@ -255,7 +253,7 @@ int main(int argc, char **argv) {
 
   // read toml file from argument line (otherwise use default file)
   std::string config_filename =
-      argc == 2 ? std::string(argv[1]) : "resources/default_scene.toml";
+      argc == 2 ? std::string(argv[1]) : "resources/scene2.toml";
 
   // parse initial scene config
   toml::table config;
@@ -348,8 +346,9 @@ int main(int argc, char **argv) {
                                 : specular_model == "phong"       ? 1
                                 : specular_model == "blinn-phong" ? 2
                                                                   : 3;
-  bool do_pcf = config["render_settings"]["pcf"].value<bool>().value();
-  bool do_shadows = config["render_settings"]["shadows"].value<bool>().value();
+  renderSettings.pcf = config["render_settings"]["pcf"].value<bool>().value();
+  renderSettings.shadows =
+      config["render_settings"]["shadows"].value<bool>().value();
 
   Trackball trackball{&window, glm::radians(fovY)};
   trackball.setCamera(look_at, rotations, dist);
@@ -445,11 +444,21 @@ int main(int argc, char **argv) {
           .addStage(GL_VERTEX_SHADER, RESOURCE_ROOT "shaders/vertex.glsl")
           .addStage(GL_FRAGMENT_SHADER, RESOURCE_ROOT "shaders/debug_frag.glsl")
           .build();
+  const Shader lightShader =
+      ShaderBuilder()
+          .addStage(GL_VERTEX_SHADER, RESOURCE_ROOT "shaders/light_vertex.glsl")
+          .addStage(GL_FRAGMENT_SHADER, RESOURCE_ROOT "shaders/light_frag.glsl")
+          .build();
   const Shader shader =
       ShaderBuilder()
           .addStage(GL_VERTEX_SHADER, RESOURCE_ROOT "shaders/vertex.glsl")
           .addStage(GL_FRAGMENT_SHADER, RESOURCE_ROOT
                     "shaders/frag.glsl") // Use the combined shader filename
+          .build();
+  const Shader depthShader =
+      ShaderBuilder()
+          .addStage(GL_VERTEX_SHADER, RESOURCE_ROOT "shaders/depth_vert.glsl")
+          .addStage(GL_FRAGMENT_SHADER, RESOURCE_ROOT "shaders/depth_frag.glsl")
           .build();
 
   // Create Vertex Buffer Object and Index Buffer Objects.
@@ -497,6 +506,35 @@ int main(int argc, char **argv) {
   // Enable depth testing.
   glEnable(GL_DEPTH_TEST);
 
+  // Shadow mapping setup
+  const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+
+  GLuint depthMapFBO;
+  glGenFramebuffers(1, &depthMapFBO);
+
+  // Create depth texture
+  GLuint depthMap;
+  glGenTextures(1, &depthMap);
+  glBindTexture(GL_TEXTURE_2D, depthMap);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH,
+               SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  // Prevent texture wrapping artifacts
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+  float borderColor[] = {1.0, 1.0, 1.0, 1.0};
+  glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+  // Attach depth texture as FBO's depth buffer
+  glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                         depthMap, 0);
+  // No color output in the bound framebuffer, only depth.
+  glDrawBuffer(GL_NONE);
+  glReadBuffer(GL_NONE);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
   // Main loop.
   while (!window.shouldClose()) {
     window.updateInput();
@@ -517,63 +555,120 @@ int main(int argc, char **argv) {
     const glm::mat4 projection = trackball.projectionMatrix();
     const glm::mat4 mvp = projection * view * model;
 
-    auto render = [&](const Shader &shader) {
-      // Set the model/view/projection matrix that is used to transform the
-      // vertices in the vertex shader.
-      glUniformMatrix4fv(shader.getUniformLocation("mvp"), 1, GL_FALSE,
-                         glm::value_ptr(mvp));
+    // 1. Render depth of scene to texture (from light's perspective)
+    glm::mat4 lightProjection, lightView;
+    float near_plane = 1.0f, far_plane = 25.0f;
+    lightProjection =
+        glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near_plane, far_plane);
+    lightView =
+        glm::lookAt(lights[selectedLightIndex].position,
+                    glm::vec3(0.0f), // Target the origin or your scene's center
+                    glm::vec3(0.0, 1.0, 0.0));
+    glm::mat4 lightMVP = lightProjection * lightView;
 
-      // Bind vertex data.
+    // Render scene from light's point of view
+    depthShader.bind();
+    glUniformMatrix4fv(depthShader.getUniformLocation("lightMVP"), 1, GL_FALSE,
+                       glm::value_ptr(lightMVP));
+
+    glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    glBindVertexArray(vao);
+    // Only position attribute is needed
+    glVertexAttribPointer(depthShader.getAttributeLocation("pos"), 3, GL_FLOAT,
+                          GL_FALSE, sizeof(Vertex),
+                          (void *)offsetof(Vertex, position));
+
+    // Draw the scene
+    glDrawElements(GL_TRIANGLES,
+                   static_cast<GLsizei>(mesh.triangles.size()) * 3,
+                   GL_UNSIGNED_INT, nullptr);
+
+    glBindVertexArray(0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // 2. Render scene as normal
+    glViewport(0, 0, window.getWindowSize().x, window.getWindowSize().y);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    shader.bind();
+
+    // Set the model/view/projection matrix
+    glUniformMatrix4fv(shader.getUniformLocation("mvp"), 1, GL_FALSE,
+                       glm::value_ptr(mvp));
+
+    // Pass lightMVP matrix to shader
+    glUniformMatrix4fv(shader.getUniformLocation("lightMVP"), 1, GL_FALSE,
+                       glm::value_ptr(lightMVP));
+
+    // Set lighting uniforms
+    glUniform3fv(shader.getUniformLocation("lightPos"), 1,
+                 glm::value_ptr(lights[selectedLightIndex].position));
+    glUniform3fv(shader.getUniformLocation("viewPos"), 1,
+                 glm::value_ptr(cameraPos));
+    glUniform3fv(shader.getUniformLocation("lightColor"), 1,
+                 glm::value_ptr(lights[selectedLightIndex].color));
+    glUniform3fv(shader.getUniformLocation("ks"), 1,
+                 glm::value_ptr(shadingData.ks));
+    glUniform3fv(shader.getUniformLocation("kd"), 1,
+                 glm::value_ptr(shadingData.kd));
+    glUniform1f(shader.getUniformLocation("shininess"), shadingData.shininess);
+    glUniform1f(shader.getUniformLocation("toonSpecularThreshold"),
+                shadingData.toonSpecularThreshold);
+    glUniform1i(shader.getUniformLocation("toonDiscretize"),
+                shadingData.toonDiscretize);
+
+    // Set mode uniforms
+    glUniform1i(shader.getUniformLocation("diffuseMode"),
+                renderSettings.diffuseMode);
+    glUniform1i(shader.getUniformLocation("specularMode"),
+                renderSettings.specularMode);
+
+    // Set shadow and PCF uniforms
+    glUniform1i(shader.getUniformLocation("shadows"),
+                renderSettings.shadows ? 1 : 0);
+    glUniform1i(shader.getUniformLocation("pcf"), renderSettings.pcf ? 1 : 0);
+    glUniform1i(shader.getUniformLocation("lightMode"),
+                lights[selectedLightIndex].is_spotlight ? 1 : 0);
+    // Bind the shadow map
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, depthMap);
+    glUniform1i(shader.getUniformLocation("shadowMap"), 0);
+
+    // Bind vertex data.
+    glBindVertexArray(vao);
+
+    // Set up vertex attributes
+    glVertexAttribPointer(shader.getAttributeLocation("pos"), 3, GL_FLOAT,
+                          GL_FALSE, sizeof(Vertex),
+                          (void *)offsetof(Vertex, position));
+    glVertexAttribPointer(shader.getAttributeLocation("normal"), 3, GL_FLOAT,
+                          GL_FALSE, sizeof(Vertex),
+                          (void *)offsetof(Vertex, normal));
+
+    // Execute draw command.
+    glDrawElements(GL_TRIANGLES,
+                   static_cast<GLsizei>(mesh.triangles.size()) * 3,
+                   GL_UNSIGNED_INT, nullptr);
+
+    glBindVertexArray(0);
+
+    lightShader.bind();
+    {
+      const glm::vec4 screenPos =
+          mvp * glm::vec4(lights[selectedLightIndex].position, 1.0f);
+      const glm::vec3 color{1, 1, 0};
+
+      glPointSize(40.0f);
+      glUniform4fv(lightShader.getUniformLocation("pos"), 1,
+                   glm::value_ptr(screenPos));
+      glUniform3fv(lightShader.getUniformLocation("color"), 1,
+                   glm::value_ptr(color));
       glBindVertexArray(vao);
-
-      // We tell OpenGL what each vertex looks like and how they are mapped to
-      // the shader using the names NOTE: Usually this can be stored in the
-      // VAO, since the locations would be the same in all shaders by using
-      // the layout(location = ...) qualifier in the shaders, however this
-      // does not work on apple devices.
-      glVertexAttribPointer(shader.getAttributeLocation("pos"), 3, GL_FLOAT,
-                            GL_FALSE, sizeof(Vertex),
-                            (void *)offsetof(Vertex, position));
-      glVertexAttribPointer(shader.getAttributeLocation("normal"), 3, GL_FLOAT,
-                            GL_FALSE, sizeof(Vertex),
-                            (void *)offsetof(Vertex, normal));
-
-      // Execute draw command.
-      glDrawElements(GL_TRIANGLES,
-                     static_cast<GLsizei>(mesh.triangles.size()) * 3,
-                     GL_UNSIGNED_INT, nullptr);
-
+      glDrawArrays(GL_POINTS, 0, 1);
       glBindVertexArray(0);
-    };
-    if (renderSettings.diffuseMode == 0) {
-      debugShader.bind();
-      render(debugShader);
-    } else if (renderSettings.specularMode != 0 ||
-               renderSettings.diffuseMode != 0) {
-      shader.bind();
-      std::cout << "Specular model: " << renderSettings.specularMode
-                << std::endl;
-      glUniform3fv(shader.getUniformLocation("lightPos"), 1,
-                   glm::value_ptr(lights[selectedLightIndex].position));
-      glUniform3fv(shader.getUniformLocation("viewPos"), 1,
-                   glm::value_ptr(cameraPos));
-      glUniform3fv(shader.getUniformLocation("lightColor"), 1,
-                   glm::value_ptr(lights[selectedLightIndex].color));
-      glUniform3fv(shader.getUniformLocation("ks"), 1,
-                   glm::value_ptr(shadingData.ks));
-      glUniform3fv(shader.getUniformLocation("kd"), 1,
-                   glm::value_ptr(shadingData.kd));
-      glUniform1f(shader.getUniformLocation("shininess"),
-                  shadingData.shininess);
-      glUniform1f(shader.getUniformLocation("toonSpecularThreshold"),
-                  shadingData.toonSpecularThreshold);
-      glUniform1i(shader.getUniformLocation("toonDiscretize"),
-                  shadingData.toonDiscretize);
-      glUniform1i(shader.getUniformLocation("specularMode"),
-                  renderSettings.specularMode);
-      glUniform1i(shader.getUniformLocation("diffuseMode"),
-                  renderSettings.diffuseMode);
-      render(shader);
     }
 
     // Present result to the screen.
@@ -584,9 +679,12 @@ int main(int argc, char **argv) {
   glDeleteBuffers(1, &vbo);
   glDeleteBuffers(1, &ibo);
   glDeleteVertexArrays(1, &vao);
+  glDeleteFramebuffers(1, &depthMapFBO);
+  glDeleteTextures(1, &depthMap);
 
   return 0;
 }
+
 static void userInteraction(const glm::vec3 &cameraPos,
                             const glm::vec3 &selectedPos,
                             const glm::vec3 &selectedNormal) {
