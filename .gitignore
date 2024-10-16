@@ -35,3 +35,4 @@ framework/
 .cache/
 
 .DS_Store
+*.mp4
