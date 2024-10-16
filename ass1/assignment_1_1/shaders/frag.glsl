@@ -26,31 +26,35 @@ out vec4 outColor;
 // Interpolated output data from vertex shader
 in vec3 fragPos;     // World-space position
 in vec3 fragNormal;  // World-space normal
-
-float computeShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
+void computeShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir, out float shadow, out float attenuation) {
     // Perform perspective divide
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     // Transform to [0,1] range
     projCoords = projCoords * 0.5 + 0.5;
 
     // Check if fragment is outside the light's view
-    if (projCoords.z > 1.0)
-        return 0.0;
+    if (projCoords.z > 1.0) {
+        shadow = 0.0;
+        attenuation = 1.0;
+        return;
+    }
 
     // Get depth from shadow map
     float closestDepth = texture(shadowMap, projCoords.xy).r;
     // Get current fragment depth
     float currentDepth = projCoords.z;
 
-    //shadow map coordinate
+    // Shadow map coordinate
     vec2 shadowMapCoord = projCoords.xy;
 
     // Bias to prevent shadow acne
     float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
-    float shadow = 0.0;
+
+    // Initialize shadow and attenuation
+    shadow = 0.0;
+    attenuation = 1.0;
 
     // Spotlight attenuation
-    float attenuation = 1.0;
     if (lightMode == 1) {
         float distFromCenter = distance(shadowMapCoord, vec2(0.5));
         float radius = 0.5;
@@ -78,10 +82,7 @@ float computeShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
         // Basic shadow
         shadow = currentDepth - bias > closestDepth ? 1.0 : 0.0;
     }
-
-    return shadow;
 }
-
 void main()
 {
     vec3 color = vec3(0.0);
@@ -100,11 +101,12 @@ void main()
         return;
     }
 
-    // Compute shadow factor
+    // Compute shadow factor and attenuation
     float shadow = 0.0;
+    float attenuation = 1.0;
     if (shadows == 1) {
         vec4 fragPosLightSpace = lightMVP * vec4(fragPos, 1.0);
-        shadow = computeShadow(fragPosLightSpace, normal, lightDir);
+        computeShadow(fragPosLightSpace, normal, lightDir, shadow, attenuation);
     }
 
     // Compute diffuse component
@@ -136,8 +138,8 @@ void main()
         // Enhance the specular highlight in x-toon shading
         vec3 specular = pow(specularStep, 2.0) * ks * lightColor;
 
-        // Combine diffuse and specular, apply shadow
-        color = (diffuse + specular) * (1.0 - shadow);
+        // Combine diffuse and specular, apply shadow and attenuation
+        color = (diffuse + specular) * attenuation * (1.0 - shadow);
         outColor = vec4(color, 1.0);
         return;
     }
@@ -168,8 +170,8 @@ void main()
         specular = specularStep * ks * lightColor;
     }
 
-    // Combine diffuse and specular, apply shadow
-    color = (diffuse + specular) * (1.0 - shadow);
+    // Combine diffuse and specular, apply shadow and attenuation
+    color = (diffuse + specular) * attenuation * (1.0 - shadow);
 
     outColor = vec4(color, 1.0);
 }

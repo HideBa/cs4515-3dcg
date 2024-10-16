@@ -250,11 +250,16 @@ std::optional<glm::vec3> tomlArrayToVec3(const toml::array *array) {
 
 // Program entry point. Everything starts here.
 int main(int argc, char **argv) {
-
+  std::cout << "arg count: " << argc << std::endl;
+  if (argc > 1) {
+    std::cout << "arg 1: " << argv[1] << std::endl;
+  } else {
+    std::cout << "arg 1: not provided" << std::endl;
+  }
   // read toml file from argument line (otherwise use default file)
   std::string config_filename =
-      argc == 2 ? std::string(argv[1]) : "resources/scene2.toml";
-
+      argc > 1 ? std::string(argv[1]) : "resources/dragon_plane.toml";
+  std::cout << "config file: " << config_filename << std::endl;
   // parse initial scene config
   toml::table config;
   try {
