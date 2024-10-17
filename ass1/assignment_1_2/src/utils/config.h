@@ -30,4 +30,10 @@ struct Config {
   bool doSpeedBasedColor = true;
   float maxSpeed = 0.5f;
   float ambientCoefficient = 0.1f;
+
+  // ===== Part 3: Bounce color =====
+  bool useBounceColor = true;
+  glm::vec3 bounceColor = glm::vec3(0.6f, 0.6f, 0.0f);
+  uint32_t bounceThreashold = 5;
+  uint32_t bounceFrames = 60;
 };

@@ -10,6 +10,8 @@ uniform float particleRadius;
 uniform vec3 containerCenter;
 uniform float containerRadius;
 uniform bool interParticleCollision;
+uniform int bounceThreshold;
+uniform int bounceFrames;
 
 layout(location = 0) out vec3 finalPosition;
 layout(location = 1) out vec3 finalVelocity;
@@ -30,6 +32,12 @@ void main() {
     vec3 newVelocity = previousVelocity + acceleration * timestep;
     vec3 newPosition = previousPosition + previousVelocity * timestep + 0.5 * acceleration * timestep * timestep;
 
+    vec3 previouseBounceData = texelFetch(previousBounceData, ivec2(particleIndex, 0), 0).rgb;
+    float collisionCount = previouseBounceData.r;
+    float frameCount = previouseBounceData.g;
+
+    float newCollisionCount = collisionCount;
+    float newFrameCount = frameCount;
 
     // ===== Task 1.3 Inter-particle Collision =====
     if (interParticleCollision) {
@@ -47,6 +55,7 @@ void main() {
                 newPosition += normal * (overlap + eps);
                 float velocityAlongNormal = dot(newVelocity, normal);
                 newVelocity -= 2.0 * normal * velocityAlongNormal;
+                newCollisionCount++;
             }
         }
     }
@@ -61,10 +70,17 @@ void main() {
         newPosition -= normal * (overlap + eps);
         float velocityAlongNormal = dot(newVelocity, normal);
         newVelocity -= 2.0 * normal * velocityAlongNormal;
+        newCollisionCount++;
     }
+
+    if (newCollisionCount > bounceThreshold) {
+     newCollisionCount = 0;
+     newFrameCount = float(bounceFrames);
+    }
+    newFrameCount = max(newFrameCount - 1.0, 0.0);
 
     finalPosition = newPosition;
     finalVelocity = newVelocity;
-    finalBounceData = vec3(0.0);
+    finalBounceData = vec3(newCollisionCount, newFrameCount, 0.0);
 
 }

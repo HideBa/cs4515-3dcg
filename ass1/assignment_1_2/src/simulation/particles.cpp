@@ -193,7 +193,6 @@ void ParticlesSimulator::simulate() {
   glActiveTexture(GL_TEXTURE0 + 2);
   glBindTexture(GL_TEXTURE_2D, sampleBounceDataTex);
   glUniform1i(simulationPass.getUniformLocation("previousBounceData"), 2);
-  //   glUniform1f(simulationPass.getUniformLocation("acceleration"), 9.81);
   glUniform1f(simulationPass.getUniformLocation("timestep"),
               config.particleSimTimestep);
   glUniform1ui(simulationPass.getUniformLocation("numParticles"),
@@ -206,6 +205,10 @@ void ParticlesSimulator::simulate() {
               config.sphereRadius);
   glUniform1i(simulationPass.getUniformLocation("interParticleCollision"),
               config.particleInterCollision);
+  glUniform1i(simulationPass.getUniformLocation("bounceThreshold"),
+              static_cast<GLint>(config.bounceThreashold));
+  glUniform1i(simulationPass.getUniformLocation("bounceFrames"),
+              static_cast<GLint>(config.bounceFrames));
 
   // Render fullscreen quad to 'touch' all texels
   utils::renderQuad(simulationPass);
@@ -254,6 +257,16 @@ void ParticlesSimulator::draw(const glm::mat4 &viewProjection) {
   glUniform1i(drawPass.getUniformLocation("shading"), config.shading ? 1 : 0);
   glUniform3fv(drawPass.getUniformLocation("lightPos"), 1,
                glm::value_ptr(config.sphereCenter));
+
+  // ===== Part 3: Bounce color =====
+  glUniform1i(drawPass.getUniformLocation("useBounceColor"),
+              config.useBounceColor ? 1 : 0);
+  glUniform3fv(drawPass.getUniformLocation("bounceColor"), 1,
+               glm::value_ptr(config.bounceColor));
+
+  // **Correct Uniform Binding**
+  glBindTexture(GL_TEXTURE_2D, sampleBounceDataTex);
+  glUniform1i(drawPass.getUniformLocation("previousBounceData"), 2);
 
   // Render number of instances equal to number of particles
   particleModel.drawInstanced(config.numParticles);

@@ -2,18 +2,18 @@
 
 #include <utils/config.h>
 
-
 class Menu {
 public:
-    Menu(Config& config);
+  Menu(Config &config);
 
-    void draw();
+  void draw();
 
 private:
-    void drawParticleSimControls();
-    void drawSphereContainerControls();
-    void drawParticleColorControls();
+  void drawParticleSimControls();
+  void drawSphereContainerControls();
+  void drawParticleColorControls();
+  void drawBouncesControls();
 
-    Config& m_config;
-    int32_t m_newParticleCount;
+  Config &m_config;
+  int32_t m_newParticleCount;
 };

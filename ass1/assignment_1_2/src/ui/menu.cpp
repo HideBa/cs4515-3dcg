@@ -25,6 +25,10 @@ void Menu::draw() {
   ImGui::Text("Particle Coloring");
   ImGui::Separator();
   drawParticleColorControls();
+  ImGui::Spacing();
+  ImGui::Text("Bounces");
+  ImGui::Separator();
+  drawBouncesControls();
 
   ImGui::End();
 }
@@ -77,6 +81,15 @@ void Menu::drawParticleColorControls() {
     ImGui::ColorEdit3("Min color", glm::value_ptr(m_config.particleColorMin));
     ImGui::ColorEdit3("Max color", glm::value_ptr(m_config.particleColorMax));
   }
-  ImGui::InputFloat("Ambient coefficient", &m_config.ambientCoefficient, 0.01f,
-                    0.1f, "%.2f");
+  ImGui::SliderFloat("Ambient coefficient", &m_config.ambientCoefficient, 0.0f,
+                     1.0f, "%.2f");
+}
+
+void Menu::drawBouncesControls() {
+  ImGui::Checkbox("Use bounce color", &m_config.useBounceColor);
+  ImGui::ColorEdit3("Bounce color", glm::value_ptr(m_config.bounceColor));
+  ImGui::InputInt("Bounce threshold",
+                  reinterpret_cast<int *>(&m_config.bounceThreashold));
+  ImGui::InputInt("Bounce frames",
+                  reinterpret_cast<int *>(&m_config.bounceFrames));
 }

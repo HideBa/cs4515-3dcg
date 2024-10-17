@@ -15,6 +15,7 @@ layout(location = 0) out vec3 fragPosition;
 layout(location = 1) out vec3 fragNormal;
 layout(location = 2) out vec3 fragVelocity;
 layout(location = 3) out vec3 fragBounceData;
+layout(location = 4) flat out int fragParticleIndex;
 
 void main() {
     // Fetch position and velocity of particle from position texture
@@ -24,14 +25,16 @@ void main() {
     vec3 particlePosition   = texture(positions, dataTexIdx).xyz;
     vec3 particleVelocity   = texture(velocities, dataTexIdx).xyz;
     vec3 particleBounceData = texture(bounceData, dataTexIdx).rgb;
-    
+    int particleIndex = int(gl_InstanceID);
+
     // Compute world-space and NDC coordinates
     vec3 worldSpacePosition = (position * particleRadius) + particlePosition;
     gl_Position             = viewProjection * vec4(worldSpacePosition, 1);
-    
+
     // Set output variables
     fragPosition    = worldSpacePosition;
     fragNormal      = normal;
     fragVelocity    = particleVelocity;
     fragBounceData  = particleBounceData;
+    fragParticleIndex = particleIndex;
 }
