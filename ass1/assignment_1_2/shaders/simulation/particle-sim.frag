@@ -31,14 +31,27 @@ void main() {
     vec3 newVelocity = previousVelocity + acceleration * timestep;
     vec3 newPosition = previousPosition + previousVelocity * timestep + 0.5 * acceleration * timestep * timestep;
 
-    finalPosition = newPosition;
-    finalVelocity = newVelocity;
-    finalBounceData = vec3(0.0); // Initialize bounce data to zero
+    // finalPosition = newPosition;
+    // finalVelocity = newVelocity;
+    // finalBounceData = vec3(0.0); // Initialize bounce data to zero
     // ===== Task 1.3 Inter-particle Collision =====
     // if (interParticleCollision) {
     // }
 
     // ===== Task 1.2 Container Collision =====
+    vec3 centerToParticle = newPosition - containerCenter ;
+    float distance = length(centerToParticle);
+    if (distance + particleRadius > containerRadius) {
+        float overlap = distance + particleRadius - containerRadius;
+        vec3 normal = centerToParticle / distance;
+        float eps = 0.001;
+        newPosition -= normal * (overlap + eps);
+        float velocityAlongNormal = dot(newVelocity, normal);
+        newVelocity -= 2.0 * normal * velocityAlongNormal;
+    }
 
+    finalPosition = newPosition;
+    finalVelocity = newVelocity;
+    finalBounceData = vec3(0.0);
 
 }
