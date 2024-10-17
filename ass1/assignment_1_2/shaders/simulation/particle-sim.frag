@@ -17,11 +17,28 @@ layout(location = 2) out vec3 finalBounceData;
 
 void main() {
     // ===== Task 1.1 Verlet Integration =====
+    // Compute the particle index based on fragment coordinates
+    int particleIndex = int(gl_FragCoord.x - 0.5);
 
+    // Fetch the previous position and velocity from textures
+    vec3 previousPosition = texelFetch(previousPositions, ivec2(particleIndex, 0), 0).rgb;
+    vec3 previousVelocity = texelFetch(previousVelocities, ivec2(particleIndex, 0), 0).rgb;
+
+    // Acceleration due to gravity
+    vec3 acceleration = vec3(0.0, -9.81, 0.0);
+
+    // Velocity Verlet Integration
+    vec3 newVelocity = previousVelocity + acceleration * timestep;
+    vec3 newPosition = previousPosition + previousVelocity * timestep + 0.5 * acceleration * timestep * timestep;
+
+    finalPosition = newPosition;
+    finalVelocity = newVelocity;
+    finalBounceData = vec3(0.0); // Initialize bounce data to zero
     // ===== Task 1.3 Inter-particle Collision =====
-    if (interParticleCollision) {
-    }
-    
+    // if (interParticleCollision) {
+    // }
+
     // ===== Task 1.2 Container Collision =====
+
 
 }
