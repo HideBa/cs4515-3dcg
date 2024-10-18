@@ -26,13 +26,13 @@ layout(std140) uniform circleBuffer
 {
     int circle_count;
     Circle circles[32];
-};
+} cb;
 
 layout(std140) uniform lineBuffer
 {
     int line_count;
     Line lines[800];
-};
+} lb;
 
 //The type of the shape we are rasterizing, the same as the enumerator in shapes.h
 // 0 - circles
@@ -45,8 +45,26 @@ uniform float rasterize_width;
 
 void main()
 {
+    shape_id = -1;
+    vec2 pixel_pos = gl_FragCoord.xy;
     // ---- CIRCLE
     if (shape_type == 0) {
+        // Rasterize Circles
+        for(int i = 0; i < cb.circle_count; ++i)
+        {
+            vec2 circlePos = cb.circles[i].position;
+            float radius = cb.circles[i].radius;
+
+            // Compute distance from pixel center to circle center
+            float dist = distance(pixel_pos, circlePos);
+
+            // Check if within (radius - rasterize_width) to (radius + rasterize_width)
+            if(dist >= (radius - rasterize_width) && dist <= (radius + rasterize_width))
+            {
+                shape_id = i; // Assign the first (lowest index) overlapping circle
+                break; // Exit loop since we need the lowest index
+            }
+        }
     }
     // ---- LINE
     else if (shape_type == 1) {
