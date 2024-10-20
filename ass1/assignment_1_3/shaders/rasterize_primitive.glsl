@@ -68,5 +68,15 @@ void main()
     }
     // ---- LINE
     else if (shape_type == 1) {
+        for (int i = 0; i < lb.line_count; ++i) {
+            Line line = lb.lines[i];
+            vec2 line_dir = normalize(line.end_point - line.start_point);
+            vec2 line_perpendicular = vec2(-line_dir.y, line_dir.x);
+            float dist_to_line = abs(dot(pixel_pos - line.start_point, line_perpendicular));
+            if (dist_to_line <= rasterize_width) {
+                shape_id = i;
+                break;
+            }
+        }
     }
 }
