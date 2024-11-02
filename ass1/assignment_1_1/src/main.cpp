@@ -681,8 +681,8 @@ int main(int argc, char **argv) {
       glBindVertexArray(0);
     }
     // Bind and draw the stars
-    stars.bind();
-    stars.draw(view, projection);
+    // stars.bind();
+    stars.draw(view, projection, cameraPos, WIDTH, HEIGHT);
 
     // Present result to the screen.
     window.swapBuffers();

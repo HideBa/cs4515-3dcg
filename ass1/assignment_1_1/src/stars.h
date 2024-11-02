@@ -21,8 +21,9 @@ public:
   ~Stars();
 
   void update(float deltaTime);
-  void bind() const;
-  void draw(const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix);
+  // void bind() const;
+  void draw(const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix,
+            const glm::vec3 &cameraPos, float screenWidth, float screenHeight);
 
   // Getters for lighting information
   glm::vec3 getSunPosition() const { return m_sunPosition; }
