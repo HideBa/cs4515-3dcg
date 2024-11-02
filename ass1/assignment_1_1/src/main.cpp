@@ -1,4 +1,5 @@
 // Disable compiler warnings in third-party code (which we cannot change).
+#include "stars.h"
 #include <framework/disable_all_warnings.h>
 #include <framework/opengl_includes.h>
 DISABLE_WARNINGS_PUSH()
@@ -468,6 +469,8 @@ int main(int argc, char **argv) {
           .addStage(GL_FRAGMENT_SHADER, RESOURCE_ROOT "shaders/depth_frag.glsl")
           .build();
 
+  Stars stars(100.0f, 5.0f);
+
   // Create Vertex Buffer Object and Index Buffer Objects.
   GLuint vbo;
 
@@ -564,7 +567,7 @@ int main(int argc, char **argv) {
 
     // 1. Render depth of scene to texture (from light's perspective)
     glm::mat4 lightProjection, lightView;
-    float near_plane = 1.0f, far_plane = 25.0f;
+    float near_plane = 1.0f, far_plane = 10000.0f;
     lightProjection =
         glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near_plane, far_plane);
     lightView =
@@ -677,6 +680,9 @@ int main(int argc, char **argv) {
       glDrawArrays(GL_POINTS, 0, 1);
       glBindVertexArray(0);
     }
+    // Bind and draw the stars
+    stars.bind();
+    stars.draw(view, projection);
 
     // Present result to the screen.
     window.swapBuffers();

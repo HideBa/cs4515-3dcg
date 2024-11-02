@@ -8,8 +8,8 @@ elseif(PROJECT_IS_TOP_LEVEL)
 	add_subdirectory("../../../framework/" "${CMAKE_CURRENT_BINARY_DIR}/framework/")
 endif()
 
-add_executable(Master_Assignment1_P1 "src/main.cpp"
-)
+add_executable(Master_Assignment1_P1 "src/main.cpp" "src/stars.cpp")
+
 target_compile_definitions(Master_Assignment1_P1 PRIVATE RESOURCE_ROOT="${CMAKE_CURRENT_LIST_DIR}/")
 target_compile_features(Master_Assignment1_P1 PRIVATE cxx_std_20)
 target_link_libraries(Master_Assignment1_P1 PRIVATE CGFramework)
