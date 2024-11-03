@@ -469,7 +469,7 @@ int main(int argc, char **argv) {
           .addStage(GL_FRAGMENT_SHADER, RESOURCE_ROOT "shaders/depth_frag.glsl")
           .build();
 
-  Stars stars(100.0f, 5.0f);
+  Stars stars(10.0f, 2.0f);
 
   // Create Vertex Buffer Object and Index Buffer Objects.
   GLuint vbo;
@@ -665,24 +665,32 @@ int main(int argc, char **argv) {
 
     glBindVertexArray(0);
 
-    lightShader.bind();
-    {
-      const glm::vec4 screenPos =
-          mvp * glm::vec4(lights[selectedLightIndex].position, 1.0f);
-      const glm::vec3 color{1, 1, 0};
+    // lightShader.bind();
+    // {
+    //   const glm::vec4 screenPos =
+    //       mvp * glm::vec4(lights[selectedLightIndex].position, 1.0f);
+    //   const glm::vec3 color{1, 1, 0};
 
-      glPointSize(40.0f);
-      glUniform4fv(lightShader.getUniformLocation("pos"), 1,
-                   glm::value_ptr(screenPos));
-      glUniform3fv(lightShader.getUniformLocation("color"), 1,
-                   glm::value_ptr(color));
-      glBindVertexArray(vao);
-      glDrawArrays(GL_POINTS, 0, 1);
-      glBindVertexArray(0);
-    }
-    // Bind and draw the stars
-    // stars.bind();
+    //   glPointSize(40.0f);
+    //   glUniform4fv(lightShader.getUniformLocation("pos"), 1,
+    //                glm::value_ptr(screenPos));
+    //   glUniform3fv(lightShader.getUniformLocation("color"), 1,
+    //                glm::value_ptr(color));
+    //   glBindVertexArray(vao);
+    //   glDrawArrays(GL_POINTS, 0, 1);
+    //   glBindVertexArray(0);
+    // }
+    // Bind and draw the stars stars.bind();
     stars.draw(view, projection, cameraPos, WIDTH, HEIGHT);
+
+    // Update sun position
+    float deltaTime = 1.0f / 60.0f; // Or use actual delta time if you have it
+    stars.update(deltaTime);
+
+    // Update the first light's position (assuming it's the sun)
+    if (!lights.empty()) {
+      lights[0].position = stars.getSunPosition();
+    }
 
     // Present result to the screen.
     window.swapBuffers();

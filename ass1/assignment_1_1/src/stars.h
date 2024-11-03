@@ -47,7 +47,7 @@ private:
   std::vector<unsigned int> m_sphereIndices;
 
   // OpenGL objects
-  unsigned int m_sphereVAO, m_sphereVBO, m_sphereEBO;
+  unsigned int m_sphereVAO, m_sphereVBO, m_sphereEBO, m_tempVAO;
   // unsigned int m_shaderProgram;
 
   // Position and lighting properties
@@ -60,6 +60,7 @@ private:
 
   // Helper functions
   void generateSphere(int segments = 32);
+  void setupTempBuffers();
   void setupBuffers();
   void createShader();
   void updatePositions();
