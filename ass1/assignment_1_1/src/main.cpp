@@ -141,6 +141,80 @@ void selectPreviousLight() {
     --selectedLightIndex;
 }
 
+struct WaterMesh {
+  std::vector<Vertex> vertices;
+  std::vector<unsigned int> indices;
+  GLuint vao, vbo, ibo;
+};
+
+WaterMesh createWaterMesh(float size = 10.0f, int resolution = 100) {
+  WaterMesh water;
+
+  // Generate grid vertices
+  float step = size / resolution;
+  for (int z = 0; z <= resolution; z++) {
+    for (int x = 0; x <= resolution; x++) {
+      Vertex vertex;
+      vertex.position =
+          glm::vec3(x * step - size / 2, // Center the plane at origin
+                    0.0f, // Initial height (will be modified by shader)
+                    z * step - size / 2 // Center the plane at origin
+          );
+      vertex.normal = glm::vec3(0.0f, 1.0f, 0.0f); // Up vector
+      water.vertices.push_back(vertex);
+    }
+  }
+
+  // Generate indices for triangles
+  for (int z = 0; z < resolution; z++) {
+    for (int x = 0; x < resolution; x++) {
+      int topLeft = z * (resolution + 1) + x;
+      int topRight = topLeft + 1;
+      int bottomLeft = (z + 1) * (resolution + 1) + x;
+      int bottomRight = bottomLeft + 1;
+
+      // First triangle
+      water.indices.push_back(topLeft);
+      water.indices.push_back(bottomLeft);
+      water.indices.push_back(topRight);
+
+      // Second triangle
+      water.indices.push_back(topRight);
+      water.indices.push_back(bottomLeft);
+      water.indices.push_back(bottomRight);
+    }
+  }
+
+  // Create and bind VAO
+  glGenVertexArrays(1, &water.vao);
+  glBindVertexArray(water.vao);
+
+  // Create and bind VBO
+  glGenBuffers(1, &water.vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, water.vbo);
+  glBufferData(GL_ARRAY_BUFFER, water.vertices.size() * sizeof(Vertex),
+               water.vertices.data(), GL_STATIC_DRAW);
+
+  // Create and bind IBO
+  glGenBuffers(1, &water.ibo);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, water.ibo);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+               water.indices.size() * sizeof(unsigned int),
+               water.indices.data(), GL_STATIC_DRAW);
+
+  // Set vertex attributes
+  glEnableVertexAttribArray(0); // position
+  glEnableVertexAttribArray(1); // normal
+
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                        (void *)offsetof(Vertex, position));
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                        (void *)offsetof(Vertex, normal));
+
+  glBindVertexArray(0);
+  return water;
+}
+
 void imgui() {
 
   // Define UI here
@@ -367,6 +441,9 @@ int main(int argc, char **argv) {
 
   const Mesh mesh = loadMesh(mesh_path)[0];
 
+  WaterMesh waterMesh =
+      createWaterMesh(20.0f, 100); // 20x20 size, 100x100 resolution
+
   window.registerKeyCallback([&](int key, int /* scancode */, int action,
                                  int /* mods */) {
     if (key == '\\' && action == GLFW_PRESS) {
@@ -464,6 +541,12 @@ int main(int argc, char **argv) {
       ShaderBuilder()
           .addStage(GL_VERTEX_SHADER, RESOURCE_ROOT "shaders/depth_vert.glsl")
           .addStage(GL_FRAGMENT_SHADER, RESOURCE_ROOT "shaders/depth_frag.glsl")
+          .build();
+
+  const Shader waterShader =
+      ShaderBuilder()
+          .addStage(GL_VERTEX_SHADER, RESOURCE_ROOT "shaders/water_vert.glsl")
+          .addStage(GL_FRAGMENT_SHADER, RESOURCE_ROOT "shaders/water_frag.glsl")
           .build();
 
   // Create Vertex Buffer Object and Index Buffer Objects.
@@ -676,6 +759,37 @@ int main(int argc, char **argv) {
       glBindVertexArray(0);
     }
 
+    // Render water
+    waterShader.bind();
+    glUniformMatrix4fv(waterShader.getUniformLocation("model"), 1, GL_FALSE,
+                       glm::value_ptr(model));
+    glUniformMatrix4fv(waterShader.getUniformLocation("view"), 1, GL_FALSE,
+                       glm::value_ptr(view));
+    glUniformMatrix4fv(waterShader.getUniformLocation("projection"), 1,
+                       GL_FALSE, glm::value_ptr(projection));
+
+    // Time uniform for animation
+    float currentTime = static_cast<float>(glfwGetTime());
+    glUniform1f(waterShader.getUniformLocation("time"), currentTime);
+
+    // Wave parameters
+    glUniform1f(waterShader.getUniformLocation("amplitude1"), 0.1f);
+    glUniform1f(waterShader.getUniformLocation("frequency1"), 4.0f);
+    glUniform2fv(waterShader.getUniformLocation("direction1"), 1,
+                 glm::value_ptr(glm::vec2(1.0f, 0.0f)));
+    glUniform1f(waterShader.getUniformLocation("speed1"), 5.0f);
+
+    glUniform1f(waterShader.getUniformLocation("amplitude2"), 0.15f);
+    glUniform1f(waterShader.getUniformLocation("frequency2"), 3.0f);
+    glUniform2fv(waterShader.getUniformLocation("direction2"), 1,
+                 glm::value_ptr(glm::vec2(0.0f, 1.0f)));
+    glUniform1f(waterShader.getUniformLocation("speed2"), 1.5f);
+
+    // Draw water
+    glBindVertexArray(waterMesh.vao);
+    glDrawElements(GL_TRIANGLES, waterMesh.indices.size(), GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
     // Present result to the screen.
     window.swapBuffers();
   }
@@ -686,6 +800,10 @@ int main(int argc, char **argv) {
   glDeleteVertexArrays(1, &vao);
   glDeleteFramebuffers(1, &depthMapFBO);
   glDeleteTextures(1, &depthMap);
+
+  // glDeleteVertexArrays(1, &waterMesh.vao);
+  // glDeleteBuffers(1, &waterMesh.vbo);
+  // glDeleteBuffers(1, &waterMesh.ibo);
 
   return 0;
 }
