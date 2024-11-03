@@ -258,7 +258,7 @@ int main(int argc, char **argv) {
   }
   // read toml file from argument line (otherwise use default file)
   std::string config_filename =
-      argc > 1 ? std::string(argv[1]) : "resources/dragon_plane.toml";
+      argc > 1 ? std::string(argv[1]) : "resources/checkout.toml";
   std::cout << "config file: " << config_filename << std::endl;
   // parse initial scene config
   toml::table config;
